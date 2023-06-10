@@ -16,8 +16,10 @@ fn complain(message: &str) -> !
     process::exit(1)
 }
 
-fn combine<P, I>(mut main_image: I, back_image: I, circle_size: f64) -> I
+fn combine<P, I>(mut main_image: I, back_image: I, circle_size: f64, edge_fuzz: f64) -> I
 where
+    f64: From<P::Subpixel>,
+    P::Subpixel: num::NumCast,
     P: Pixel + 'static,
     I: GenericImage<Pixel=P>
 {
@@ -37,14 +39,22 @@ where
 
             let y_local = y as f64 / height as f64 * 2.0 - 1.0;
 
-            let is_background = x_local.hypot(y_local) > circle_size;
+            let blend = x_local.hypot(y_local) - circle_size;
+            let blend = blend / edge_fuzz;
 
-            if is_background
+            let this_pixel = main_image.get_pixel(x, y);
+            let background_pixel = back_image.get_pixel(x, y);
+
+            let mixed_pixel = this_pixel.map2(background_pixel, |a, b|
             {
-                let pixel = back_image.get_pixel(x, y);
+                let i = blend.max(0.0).min(1.0);
 
-                main_image.put_pixel(x, y, *pixel)
-            }
+                let mixed = f64::from(a) * (1.0 - i) + f64::from(b) * i;
+
+                <P::Subpixel as num::NumCast>::from(mixed).unwrap()
+            });
+
+            main_image.put_pixel(x, y, mixed_pixel);
         }
     }
 
@@ -79,7 +89,15 @@ fn main()
         })
     }).unwrap_or(0.5);
 
-    let combined = combine(main_image, back_image, circle_size);
+    let edge_fuzz = args.next().map(|arg|
+    {
+        arg.parse().unwrap_or_else(|err|
+        {
+            complain(&format!("couldnt parse {arg} as a float: {err:?}"))
+        })
+    }).unwrap_or(0.01);
+
+    let combined = combine(main_image, back_image, circle_size, edge_fuzz);
 
     combined.save("output.png")
         .unwrap_or_else(|err| complain(&format!("error saving the image: {err:?}")));
