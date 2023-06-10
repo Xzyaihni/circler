@@ -40,7 +40,14 @@ where
             let y_local = y as f64 / height as f64 * 2.0 - 1.0;
 
             let blend = x_local.hypot(y_local) - circle_size;
-            let blend = blend / edge_fuzz;
+
+            let blend = if edge_fuzz != 0.0
+            {
+                blend / edge_fuzz
+            } else
+            {
+                if blend <= 0.0 {0.0} else {1.0}
+            };
 
             let this_pixel = main_image.get_pixel(x, y);
             let background_pixel = back_image.get_pixel(x, y);
